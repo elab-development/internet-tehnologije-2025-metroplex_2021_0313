@@ -57,7 +57,10 @@ model Activity {
   longitude     Float?
 
   plannedActivities PlannedActivity[]
+
+  @@unique([destination, name], name: "destination_name")
 }
+
 
 model PlannedActivity {
   id         Int @id @default(autoincrement())
