@@ -2,6 +2,8 @@ import { Router } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { prisma } from "../prisma.js";
+import express from "express";
+import { requireAuth } from "../middleware/requireAuth.js";
 
 const router = Router();
 
@@ -68,6 +70,12 @@ router.post("/login", async (req, res) => {
     console.error(err);
     return res.status(500).json({ message: "Server error." });
   }
+});
+
+router.get("/me", requireAuth, async (req, res) => {
+  // Najbrža varijanta: vrati payload iz tokena
+  // (kasnije možemo da čitamo iz baze ako hoćeš sve detalje)
+  return res.json({ user: req.user });
 });
 
 export default router;
