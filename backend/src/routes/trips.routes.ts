@@ -211,4 +211,116 @@ router.get("/:id", requireAuth, async (req, res) => {
   }
 });
 
+router.post("/:id/regenerate", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user!.userId;
+    const tripId = Number(req.params.id);
+
+    if (!Number.isInteger(tripId) || tripId <= 0) {
+      return res.status(404).json({ message: "Trip not found" });
+    }
+
+    // 1) check if the trips exists + ownership
+    const base = await prisma.trip.findUnique({
+      where: { id: tripId },
+      select: {
+        id: true,
+        userId: true,
+        destination: true,
+        daysCount: true,
+        interests: true,
+      },
+    });
+
+    if (!base) return res.status(404).json({ message: "Trip not found" });
+    if (base.userId !== userId)
+      return res.status(403).json({ message: "Forbidden" });
+
+    // 2) load destination activities
+    const activities = await prisma.activity.findMany({
+      where: { destination: base.destination },
+    });
+
+    // 3) generate a new plan
+    const plan = generateItinerary({
+      activities,
+      daysCount: base.daysCount,
+      interests: base.interests,
+    });
+
+    // 4) tx: delete old plan + generate a new one
+    const savedTrip = await prisma.$transaction(async (tx) => {
+      // load all day plans for this trip
+      const dayPlans = await tx.dayPlan.findMany({
+        where: { tripId },
+        select: { id: true, dayNumber: true },
+        orderBy: { dayNumber: "asc" },
+      });
+
+      // delete plannedActivities for those day plans
+      const dayPlanIds = dayPlans.map((dp) => dp.id);
+
+      if (dayPlanIds.length > 0) {
+        await tx.plannedActivity.deleteMany({
+          where: { dayPlanId: { in: dayPlanIds } },
+        });
+
+        // delete dayPlans
+        await tx.dayPlan.deleteMany({
+          where: { tripId },
+        });
+      }
+
+      // create new dayPlans
+      const newDayPlans = [];
+      for (let d = 1; d <= base.daysCount; d++) {
+        const dp = await tx.dayPlan.create({
+          data: { tripId, dayNumber: d },
+        });
+        newDayPlans.push(dp);
+      }
+
+      // add plannedActivities per plan
+      for (let d = 1; d <= base.daysCount; d++) {
+        const dp = newDayPlans[d - 1];
+        const dayItems = plan.days[d - 1] ?? [];
+
+        for (let i = 0; i < dayItems.length; i++) {
+          await tx.plannedActivity.create({
+            data: {
+              dayPlanId: dp.id,
+              activityId: dayItems[i].id,
+              orderIndex: i + 1,
+            },
+          });
+        }
+      }
+
+      // return full nested trip
+      return tx.trip.findUnique({
+        where: { id: tripId },
+        include: {
+          dayPlans: {
+            orderBy: { dayNumber: "asc" },
+            include: {
+              plannedActivities: {
+                orderBy: { orderIndex: "asc" },
+                include: { activity: true },
+              },
+            },
+          },
+        },
+      });
+    });
+
+    return res.json({
+      trip: savedTrip,
+      warning: plan.warning,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
 export default router;
