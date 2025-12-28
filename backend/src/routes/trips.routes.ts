@@ -211,6 +211,34 @@ router.get("/:id", requireAuth, async (req, res) => {
   }
 });
 
+router.delete("/:id", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user!.userId;
+    const tripId = Number(req.params.id);
+
+    if (!Number.isInteger(tripId) || tripId <= 0) {
+      return res.status(404).json({ message: "Trip not found" });
+    }
+
+    const base = await prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { id: true, userId: true },
+    });
+
+    if (!base) return res.status(404).json({ message: "Trip not found" });
+    if (base.userId !== userId)
+      return res.status(403).json({ message: "Forbidden" });
+
+    // Delete trip (cascade should remove DayPlan + PlannedActivity)
+    await prisma.trip.delete({ where: { id: tripId } });
+
+    return res.status(200).json({ message: "Trip deleted" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
 type RegenerateBody = {
   interests?: string;
 };
