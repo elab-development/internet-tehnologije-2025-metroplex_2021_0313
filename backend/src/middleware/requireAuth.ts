@@ -1,6 +1,8 @@
 // backend/src/middleware/requireAuth.js
 import { Request, Response, NextFunction } from "express";
 import jwt, { JwtPayload } from "jsonwebtoken";
+import { prisma } from "../prisma.js";
+import { hashToken } from "../utils/tokenHash.js";
 
 export interface AuthPayload extends JwtPayload {
   userId: number;
@@ -11,11 +13,16 @@ declare global {
   namespace Express {
     interface Request {
       user?: AuthPayload;
+      token?: string;
     }
   }
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
+export async function requireAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
   try {
     const header = req.headers.authorization;
 
@@ -26,6 +33,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     }
 
     const token = header.split(" ")[1];
+    req.token = token;
     const secret = process.env.JWT_SECRET;
 
     if (!secret) {
@@ -33,7 +41,13 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     }
 
     const payload = jwt.verify(token, secret) as AuthPayload;
-
+    const tokenHash = hashToken(token);
+    const revoked = await prisma.revokedToken.findUnique({
+      where: { tokenHash },
+    });
+    if (revoked) {
+      return res.status(401).json({ message: "Invalid or expired token" });
+    }
     // ie: { id, email, role }
     req.user = payload;
 

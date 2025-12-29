@@ -73,3 +73,12 @@ model PlannedActivity {
   @@unique([dayPlanId, orderIndex])
   @@index([activityId])
 }
+
+model RevokedToken {
+  id        Int      @id @default(autoincrement())
+  tokenHash String   @unique
+  expiresAt DateTime
+  revokedAt DateTime @default(now())
+
+  @@index([expiresAt])
+}

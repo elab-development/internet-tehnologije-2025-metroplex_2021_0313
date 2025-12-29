@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { hashToken } from "../utils/tokenHash.js";
 
 const router = Router();
 
@@ -101,6 +102,37 @@ router.post(
 // GET /api/auth/me
 router.get("/me", requireAuth, (req: Request, res: Response) => {
   return res.json({ user: req.user });
+});
+
+router.post("/logout", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const token = req.token;
+    if (!token)
+      return res.status(401).json({ message: "Invalid or expired token" });
+
+    const exp = req.user?.exp;
+    if (!exp) return res.status(400).json({ message: "Token has no exp" });
+
+    const tokenHash = hashToken(token);
+    const expiresAt = new Date(exp * 1000);
+
+    // optional cleanup
+    await prisma.revokedToken.deleteMany({
+      where: { expiresAt: { lt: new Date() } },
+    });
+
+    // idempotent insert
+    await prisma.revokedToken.upsert({
+      where: { tokenHash },
+      update: { expiresAt },
+      create: { tokenHash, expiresAt },
+    });
+
+    return res.json({ message: "Logged out" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error" });
+  }
 });
 
 export default router;
