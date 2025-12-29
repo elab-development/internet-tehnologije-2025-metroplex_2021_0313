@@ -19,7 +19,7 @@ type ActivityBody = {
 router.get(
   "/",
   requireAuth,
-  requireRole("ADMIN"),
+  requireRole("ADMIN", "EDITOR"),
   async (req: Request, res: Response) => {
     try {
       const destination =
@@ -49,7 +49,7 @@ router.get(
 router.post(
   "/",
   requireAuth,
-  requireRole("ADMIN"),
+  requireRole("ADMIN", "EDITOR"),
   async (req: Request<{}, {}, ActivityBody>, res: Response) => {
     try {
       const {
@@ -130,29 +130,34 @@ router.post(
 );
 
 // GET /api/activities/:id
-router.get("/:id", requireAuth, requireRole("ADMIN"), async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id <= 0) {
-      return res.status(404).json({ message: "Activity not found" });
+router.get(
+  "/:id",
+  requireAuth,
+  requireRole("ADMIN", "EDITOR"),
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) {
+        return res.status(404).json({ message: "Activity not found" });
+      }
+
+      const activity = await prisma.activity.findUnique({ where: { id } });
+      if (!activity)
+        return res.status(404).json({ message: "Activity not found" });
+
+      return res.json({ activity });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ message: "Server error" });
     }
-
-    const activity = await prisma.activity.findUnique({ where: { id } });
-    if (!activity)
-      return res.status(404).json({ message: "Activity not found" });
-
-    return res.json({ activity });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Server error" });
   }
-});
+);
 
 // PUT /api/activities/:id
 router.put(
   "/:id",
   requireAuth,
-  requireRole("ADMIN"),
+  requireRole("ADMIN", "EDITOR"),
   async (req: Request<{ id: string }, {}, ActivityBody>, res) => {
     try {
       const id = Number(req.params.id);
