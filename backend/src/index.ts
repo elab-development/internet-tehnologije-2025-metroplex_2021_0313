@@ -9,6 +9,9 @@ import activitiesRoutes from "./routes/activities.routes.js";
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.get("/", (req: Request, res: Response) => {
+  res.json({ message: "Metroplex API", health: "/health" });
+});
 
 app.get("/health", (req: Request, res: Response) => {
   res.json({ status: "ok" });
